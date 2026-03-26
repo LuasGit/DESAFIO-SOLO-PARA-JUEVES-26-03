@@ -1,498 +1,509 @@
-import React, { useState } from 'react';
-import { Calculator, AlertCircle, CheckCircle2, Settings2 } from 'lucide-react';
-
-// --- Algoritmos Numéricos ---
-
-const cloneMatrix = (matrix) => matrix.map(row => [...row]);
-
-const solveLU = (L, U, b, n) => {
-  let y = Array(n).fill(0);
-  let x = Array(n).fill(0);
-
-  // Sustitución hacia adelante: L * y = b
-  for (let i = 0; i < n; i++) {
-    let sum = 0;
-    for (let j = 0; j < i; j++) {
-      sum += L[i][j] * y[j];
-    }
-    if (L[i][i] === 0) throw new Error("División por cero en la sustitución hacia adelante.");
-    y[i] = (b[i] - sum) / L[i][i];
-  }
-
-  // Sustitución hacia atrás: U * x = y
-  for (let i = n - 1; i >= 0; i--) {
-    let sum = 0;
-    for (let j = i + 1; j < n; j++) {
-      sum += U[i][j] * x[j];
-    }
-    if (U[i][i] === 0) throw new Error("División por cero en la sustitución hacia atrás.");
-    x[i] = (y[i] - sum) / U[i][i];
-  }
-
-  return x;
-};
-
-const doolittle = (A, n) => {
-  let L = Array(n).fill(0).map(() => Array(n).fill(0));
-  let U = Array(n).fill(0).map(() => Array(n).fill(0));
-
-  for (let i = 0; i < n; i++) {
-    // Upper Triangular
-    for (let k = i; k < n; k++) {
-      let sum = 0;
-      for (let j = 0; j < i; j++) {
-        sum += (L[i][j] * U[j][k]);
-      }
-      U[i][k] = A[i][k] - sum;
-    }
-    
-    // Lower Triangular
-    L[i][i] = 1; // Diagonal de L es 1
-    for (let k = i + 1; k < n; k++) {
-      let sum = 0;
-      for (let j = 0; j < i; j++) {
-        sum += (L[k][j] * U[j][i]);
-      }
-      if (U[i][i] === 0) throw new Error("División por cero. El método de Doolittle requiere pivoteo para esta matriz.");
-      L[k][i] = (A[k][i] - sum) / U[i][i];
-    }
-  }
-  return { L, U };
-};
-
-const crout = (A, n) => {
-  let L = Array(n).fill(0).map(() => Array(n).fill(0));
-  let U = Array(n).fill(0).map(() => Array(n).fill(0));
-
-  for (let i = 0; i < n; i++) {
-    U[i][i] = 1; // Diagonal de U es 1
-    
-    // Lower Triangular
-    for (let k = i; k < n; k++) {
-      let sum = 0;
-      for (let j = 0; j < i; j++) {
-        sum += (L[k][j] * U[j][i]);
-      }
-      L[k][i] = A[k][i] - sum;
-    }
-
-    // Upper Triangular
-    for (let k = i + 1; k < n; k++) {
-      let sum = 0;
-      for (let j = 0; j < i; j++) {
-        sum += (L[i][j] * U[j][k]);
-      }
-      if (L[i][i] === 0) throw new Error("División por cero. El método de Crout requiere pivoteo para esta matriz.");
-      U[i][k] = (A[i][k] - sum) / L[i][i];
-    }
-  }
-  return { L, U };
-};
-
-const cholesky = (A, n) => {
-  let L = Array(n).fill(0).map(() => Array(n).fill(0));
-  let LT = Array(n).fill(0).map(() => Array(n).fill(0));
-
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j <= i; j++) {
-      let sum = 0;
-      for (let k = 0; k < j; k++) {
-        sum += L[i][k] * L[j][k];
-      }
-      
-      if (i === j) {
-        let val = A[i][i] - sum;
-        if (val <= 0) throw new Error("La matriz no es definida positiva o es singular. Cholesky no es aplicable.");
-        L[i][j] = Math.sqrt(val);
-      } else {
-        if (L[j][j] === 0) throw new Error("División por cero en Cholesky.");
-        L[i][j] = (A[i][j] - sum) / L[j][j];
-      }
-    }
-  }
-
-  // Transpose L to get LT (U)
-  for(let i=0; i<n; i++){
-    for(let j=0; j<n; j++){
-      LT[i][j] = L[j][i];
-    }
-  }
-
-  return { L, U: LT, isCholesky: true };
-};
-
-const jacobi = (A, b, n, tol, maxIter) => {
-  let x = Array(n).fill(0);
-  let xNew = Array(n).fill(0);
-  let iter = 0;
-  let error = tol + 1;
-
-  // Check zeros on diagonal
-  for(let i=0; i<n; i++) {
-    if(A[i][i] === 0) throw new Error("Cero en la diagonal principal. El método de Jacobi requiere pivoteo previo.");
-  }
-
-  while (error > tol && iter < maxIter) {
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j < n; j++) {
-        if (i !== j) sum += A[i][j] * x[j];
-      }
-      xNew[i] = (b[i] - sum) / A[i][i];
-    }
-
-    // Calc error (infinity norm)
-    error = 0;
-    for (let i = 0; i < n; i++) {
-      error = Math.max(error, Math.abs(xNew[i] - x[i]));
-    }
-
-    x = [...xNew];
-    iter++;
-  }
-
-  if (iter >= maxIter) throw new Error("El método no convergió en el número máximo de iteraciones.");
-  return { x, iter };
-};
-
-const gaussSeidel = (A, b, n, tol, maxIter) => {
-  let x = Array(n).fill(0);
-  let iter = 0;
-  let error = tol + 1;
-
-  for(let i=0; i<n; i++) {
-    if(A[i][i] === 0) throw new Error("Cero en la diagonal principal. Gauss-Seidel requiere pivoteo previo.");
-  }
-
-  while (error > tol && iter < maxIter) {
-    let xOld = [...x];
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      for (let j = 0; j < n; j++) {
-        if (i !== j) sum += A[i][j] * x[j]; // Uses updated x immediately
-      }
-      x[i] = (b[i] - sum) / A[i][i];
-    }
-
-    error = 0;
-    for (let i = 0; i < n; i++) {
-      error = Math.max(error, Math.abs(x[i] - xOld[i]));
-    }
-    iter++;
-  }
-
-  if (iter >= maxIter) throw new Error("El método no convergió en el número máximo de iteraciones.");
-  return { x, iter };
-};
-
-
-export default function App() {
-  const [size, setSize] = useState(3);
-  const [method, setMethod] = useState('doolittle');
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora de Métodos Numéricos</title>
   
-  const [matrix, setMatrix] = useState(Array(3).fill(0).map(() => Array(3).fill(0)));
-  const [vectorB, setVectorB] = useState(Array(3).fill(0));
+  <!-- Carga de React, ReactDOM y Babel desde CDNs para que funcione sin instalación -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   
-  const [tolerance, setTolerance] = useState(0.0001);
-  const [maxIter, setMaxIter] = useState(100);
+  <!-- Carga de Tailwind CSS para los estilos -->
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100">
+  <div id="root"></div>
 
-  const [result, setResult] = useState(null);
-  const [errorMsg, setErrorMsg] = useState('');
+  <script type="text/babel">
+    const { useState } = React;
 
-  const handleSizeChange = (e) => {
-    const newSize = parseInt(e.target.value);
-    if (newSize >= 2 && newSize <= 6) {
-      setSize(newSize);
-      // Resize matrix preserving existing values
-      setMatrix(prev => {
-        const newM = Array(newSize).fill(0).map(() => Array(newSize).fill(0));
-        for (let i = 0; i < Math.min(prev.length, newSize); i++) {
-          for (let j = 0; j < Math.min(prev[0].length, newSize); j++) {
-            newM[i][j] = prev[i][j];
+    // --- Iconos SVG (Reemplazando lucide-react para versión standalone) ---
+    const CalculatorIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="16" height="20" x="4" y="2" rx="2"/><line x1="8" x2="16" y1="6" y2="6"/><line x1="16" x2="16.01" y1="10" y2="10"/><line x1="12" x2="12.01" y1="10" y2="10"/><line x1="8" x2="8.01" y1="10" y2="10"/><line x1="8" x2="8.01" y1="14" y2="14"/><line x1="12" x2="12.01" y1="14" y2="14"/><line x1="16" x2="16.01" y1="14" y2="14"/><line x1="8" x2="8.01" y1="18" y2="18"/><line x1="12" x2="12.01" y1="18" y2="18"/><line x1="16" x2="16.01" y1="18" y2="18"/></svg>
+    );
+    const SettingsIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" className="mr-2 w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="7" r="3"/><circle cx="9" cy="17" r="3"/></svg>
+    );
+    const AlertIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" className="text-red-500 mr-3 mt-0.5 w-5 h-5 flex-shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+    );
+    const CheckIcon = () => (
+      <svg xmlns="http://www.w3.org/2000/svg" className="text-green-500 mr-2 w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+    );
+
+    // --- Algoritmos Numéricos ---
+
+    const cloneMatrix = (matrix) => matrix.map(row => [...row]);
+
+    const solveLU = (L, U, b, n) => {
+      let y = Array(n).fill(0);
+      let x = Array(n).fill(0);
+
+      // Sustitución hacia adelante: L * y = b
+      for (let i = 0; i < n; i++) {
+        let sum = 0;
+        for (let j = 0; j < i; j++) {
+          sum += L[i][j] * y[j];
+        }
+        if (L[i][i] === 0) throw new Error("División por cero en la sustitución hacia adelante.");
+        y[i] = (b[i] - sum) / L[i][i];
+      }
+
+      // Sustitución hacia atrás: U * x = y
+      for (let i = n - 1; i >= 0; i--) {
+        let sum = 0;
+        for (let j = i + 1; j < n; j++) {
+          sum += U[i][j] * x[j];
+        }
+        if (U[i][i] === 0) throw new Error("División por cero en la sustitución hacia atrás.");
+        x[i] = (y[i] - sum) / U[i][i];
+      }
+
+      return x;
+    };
+
+    const doolittle = (A, n) => {
+      let L = Array(n).fill(0).map(() => Array(n).fill(0));
+      let U = Array(n).fill(0).map(() => Array(n).fill(0));
+
+      for (let i = 0; i < n; i++) {
+        for (let k = i; k < n; k++) {
+          let sum = 0;
+          for (let j = 0; j < i; j++) sum += (L[i][j] * U[j][k]);
+          U[i][k] = A[i][k] - sum;
+        }
+        
+        L[i][i] = 1;
+        for (let k = i + 1; k < n; k++) {
+          let sum = 0;
+          for (let j = 0; j < i; j++) sum += (L[k][j] * U[j][i]);
+          if (U[i][i] === 0) throw new Error("División por cero. El método de Doolittle requiere pivoteo para esta matriz.");
+          L[k][i] = (A[k][i] - sum) / U[i][i];
+        }
+      }
+      return { L, U };
+    };
+
+    const crout = (A, n) => {
+      let L = Array(n).fill(0).map(() => Array(n).fill(0));
+      let U = Array(n).fill(0).map(() => Array(n).fill(0));
+
+      for (let i = 0; i < n; i++) {
+        U[i][i] = 1; 
+        
+        for (let k = i; k < n; k++) {
+          let sum = 0;
+          for (let j = 0; j < i; j++) sum += (L[k][j] * U[j][i]);
+          L[k][i] = A[k][i] - sum;
+        }
+
+        for (let k = i + 1; k < n; k++) {
+          let sum = 0;
+          for (let j = 0; j < i; j++) sum += (L[i][j] * U[j][k]);
+          if (L[i][i] === 0) throw new Error("División por cero. El método de Crout requiere pivoteo para esta matriz.");
+          U[i][k] = (A[i][k] - sum) / L[i][i];
+        }
+      }
+      return { L, U };
+    };
+
+    const cholesky = (A, n) => {
+      let L = Array(n).fill(0).map(() => Array(n).fill(0));
+      let LT = Array(n).fill(0).map(() => Array(n).fill(0));
+
+      for (let i = 0; i < n; i++) {
+        for (let j = 0; j <= i; j++) {
+          let sum = 0;
+          for (let k = 0; k < j; k++) sum += L[i][k] * L[j][k];
+          
+          if (i === j) {
+            let val = A[i][i] - sum;
+            if (val <= 0) throw new Error("La matriz no es definida positiva o es singular. Cholesky no es aplicable.");
+            L[i][j] = Math.sqrt(val);
+          } else {
+            if (L[j][j] === 0) throw new Error("División por cero en Cholesky.");
+            L[i][j] = (A[i][j] - sum) / L[j][j];
           }
         }
-        return newM;
-      });
-      // Resize vector B
-      setVectorB(prev => {
-        const newV = Array(newSize).fill(0);
-        for(let i=0; i<Math.min(prev.length, newSize); i++){
-          newV[i] = prev[i];
-        }
-        return newV;
-      });
-      setResult(null);
-      setErrorMsg('');
-    }
-  };
-
-  const updateMatrixValue = (r, c, value) => {
-    const newM = [...matrix];
-    newM[r][c] = value;
-    setMatrix(newM);
-  };
-
-  const updateVectorBValue = (i, value) => {
-    const newV = [...vectorB];
-    newV[i] = value;
-    setVectorB(newV);
-  };
-
-  const isIterative = method === 'jacobi' || method === 'seidel';
-
-  const calculate = () => {
-    setErrorMsg('');
-    setResult(null);
-    try {
-      const numMatrix = matrix.map(row => row.map(v => parseFloat(v) || 0));
-      const numVectorB = vectorB.map(v => parseFloat(v) || 0);
-
-      let res;
-      if (method === 'doolittle' || method === 'crout' || method === 'cholesky') {
-        if (method === 'doolittle') res = doolittle(numMatrix, size);
-        else if (method === 'crout') res = crout(numMatrix, size);
-        else if (method === 'cholesky') res = cholesky(numMatrix, size);
-        
-        // Resolver el sistema usando L, U y el vector b
-        res.x = solveLU(res.L, res.U, numVectorB, size);
       }
-      else if (method === 'jacobi') res = jacobi(numMatrix, numVectorB, size, parseFloat(tolerance), parseInt(maxIter));
-      else if (method === 'seidel') res = gaussSeidel(numMatrix, numVectorB, size, parseFloat(tolerance), parseInt(maxIter));
+
+      for(let i=0; i<n; i++){
+        for(let j=0; j<n; j++){
+          LT[i][j] = L[j][i];
+        }
+      }
+
+      return { L, U: LT, isCholesky: true };
+    };
+
+    const jacobi = (A, b, n, tol, maxIter) => {
+      let x = Array(n).fill(0);
+      let xNew = Array(n).fill(0);
+      let iter = 0;
+      let error = tol + 1;
+
+      for(let i=0; i<n; i++) {
+        if(A[i][i] === 0) throw new Error("Cero en la diagonal principal. El método de Jacobi requiere pivoteo previo.");
+      }
+
+      while (error > tol && iter < maxIter) {
+        for (let i = 0; i < n; i++) {
+          let sum = 0;
+          for (let j = 0; j < n; j++) {
+            if (i !== j) sum += A[i][j] * x[j];
+          }
+          xNew[i] = (b[i] - sum) / A[i][i];
+        }
+
+        error = 0;
+        for (let i = 0; i < n; i++) {
+          error = Math.max(error, Math.abs(xNew[i] - x[i]));
+        }
+
+        x = [...xNew];
+        iter++;
+      }
+
+      if (iter >= maxIter) throw new Error("El método no convergió en el número máximo de iteraciones.");
+      return { x, iter };
+    };
+
+    const gaussSeidel = (A, b, n, tol, maxIter) => {
+      let x = Array(n).fill(0);
+      let iter = 0;
+      let error = tol + 1;
+
+      for(let i=0; i<n; i++) {
+        if(A[i][i] === 0) throw new Error("Cero en la diagonal principal. Gauss-Seidel requiere pivoteo previo.");
+      }
+
+      while (error > tol && iter < maxIter) {
+        let xOld = [...x];
+        for (let i = 0; i < n; i++) {
+          let sum = 0;
+          for (let j = 0; j < n; j++) {
+            if (i !== j) sum += A[i][j] * x[j]; 
+          }
+          x[i] = (b[i] - sum) / A[i][i];
+        }
+
+        error = 0;
+        for (let i = 0; i < n; i++) {
+          error = Math.max(error, Math.abs(x[i] - xOld[i]));
+        }
+        iter++;
+      }
+
+      if (iter >= maxIter) throw new Error("El método no convergió en el número máximo de iteraciones.");
+      return { x, iter };
+    };
+
+
+    function App() {
+      const [size, setSize] = useState(3);
+      const [method, setMethod] = useState('doolittle');
       
-      setResult({ type: isIterative ? 'iterative' : 'factorization', data: res });
-    } catch (err) {
-      setErrorMsg(err.message);
-    }
-  };
+      const [matrix, setMatrix] = useState(Array(3).fill(0).map(() => Array(3).fill(0)));
+      const [vectorB, setVectorB] = useState(Array(3).fill(0));
+      
+      const [tolerance, setTolerance] = useState(0.0001);
+      const [maxIter, setMaxIter] = useState(100);
 
-  // Helper to format numbers cleanly
-  const formatNum = (num) => {
-    if (Math.abs(num) < 1e-10) return "0";
-    return Number.isInteger(num) ? num.toString() : num.toFixed(4);
-  };
+      const [result, setResult] = useState(null);
+      const [errorMsg, setErrorMsg] = useState('');
 
-  return (
-    <div className="min-h-screen bg-slate-100 text-slate-800 p-4 md:p-8 font-sans">
-      <div className="max-w-5xl mx-auto space-y-6">
-        
-        {/* Header */}
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center space-x-4">
-          <div className="p-3 bg-blue-500 rounded-lg text-white">
-            <Calculator size={28} />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Calculadora de Métodos Numéricos</h1>
-            <p className="text-slate-500">Resuelve sistemas y factoriza matrices hasta 6x6</p>
-          </div>
-        </div>
+      const handleSizeChange = (e) => {
+        const newSize = parseInt(e.target.value);
+        if (newSize >= 2 && newSize <= 6) {
+          setSize(newSize);
+          setMatrix(prev => {
+            const newM = Array(newSize).fill(0).map(() => Array(newSize).fill(0));
+            for (let i = 0; i < Math.min(prev.length, newSize); i++) {
+              for (let j = 0; j < Math.min(prev[0].length, newSize); j++) {
+                newM[i][j] = prev[i][j];
+              }
+            }
+            return newM;
+          });
+          setVectorB(prev => {
+            const newV = Array(newSize).fill(0);
+            for(let i=0; i<Math.min(prev.length, newSize); i++){
+              newV[i] = prev[i];
+            }
+            return newV;
+          });
+          setResult(null);
+          setErrorMsg('');
+        }
+      };
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Controls Panel */}
-          <div className="lg:col-span-1 space-y-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
-              <h2 className="text-lg font-semibold mb-4 flex items-center"><Settings2 className="mr-2 w-5 h-5"/> Configuración</h2>
-              
-              <div className="space-y-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Tamaño de la Matriz (n x n)</label>
-                  <div className="flex items-center space-x-3">
-                    <input 
-                      type="range" 
-                      min="2" max="6" 
-                      value={size} 
-                      onChange={handleSizeChange}
-                      className="w-full accent-blue-600"
-                    />
-                    <span className="font-mono bg-slate-100 px-3 py-1 rounded border border-slate-200">{size}x{size}</span>
+      const updateMatrixValue = (r, c, value) => {
+        const newM = [...matrix];
+        newM[r][c] = value;
+        setMatrix(newM);
+      };
+
+      const updateVectorBValue = (i, value) => {
+        const newV = [...vectorB];
+        newV[i] = value;
+        setVectorB(newV);
+      };
+
+      const isIterative = method === 'jacobi' || method === 'seidel';
+
+      const calculate = () => {
+        setErrorMsg('');
+        setResult(null);
+        try {
+          const numMatrix = matrix.map(row => row.map(v => parseFloat(v) || 0));
+          const numVectorB = vectorB.map(v => parseFloat(v) || 0);
+
+          let res;
+          if (method === 'doolittle' || method === 'crout' || method === 'cholesky') {
+            if (method === 'doolittle') res = doolittle(numMatrix, size);
+            else if (method === 'crout') res = crout(numMatrix, size);
+            else if (method === 'cholesky') res = cholesky(numMatrix, size);
+            
+            res.x = solveLU(res.L, res.U, numVectorB, size);
+          }
+          else if (method === 'jacobi') res = jacobi(numMatrix, numVectorB, size, parseFloat(tolerance), parseInt(maxIter));
+          else if (method === 'seidel') res = gaussSeidel(numMatrix, numVectorB, size, parseFloat(tolerance), parseInt(maxIter));
+          
+          setResult({ type: isIterative ? 'iterative' : 'factorization', data: res });
+        } catch (err) {
+          setErrorMsg(err.message);
+        }
+      };
+
+      const formatNum = (num) => {
+        if (Math.abs(num) < 1e-10) return "0";
+        return Number.isInteger(num) ? num.toString() : num.toFixed(4);
+      };
+
+      return (
+        <div className="min-h-screen text-slate-800 p-4 md:p-8 font-sans">
+          <div className="max-w-5xl mx-auto space-y-6">
+            
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex items-center space-x-4">
+              <div className="p-3 bg-blue-500 rounded-lg text-white">
+                <CalculatorIcon />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold text-slate-900">Calculadora de Métodos Numéricos</h1>
+                <p className="text-slate-500">Resuelve sistemas y factoriza matrices hasta 6x6</p>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-1 space-y-6">
+                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                  <h2 className="text-lg font-semibold mb-4 flex items-center"><SettingsIcon /> Configuración</h2>
+                  
+                  <div className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Tamaño de la Matriz (n x n)</label>
+                      <div className="flex items-center space-x-3">
+                        <input 
+                          type="range" 
+                          min="2" max="6" 
+                          value={size} 
+                          onChange={handleSizeChange}
+                          className="w-full accent-blue-600"
+                        />
+                        <span className="font-mono bg-slate-100 px-3 py-1 rounded border border-slate-200">{size}x{size}</span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-sm font-medium text-slate-700 mb-1">Método</label>
+                      <select 
+                        value={method} 
+                        onChange={(e) => { setMethod(e.target.value); setResult(null); setErrorMsg(''); }}
+                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                      >
+                        <optgroup label="Factorización Directa">
+                          <option value="doolittle">LU - Doolittle</option>
+                          <option value="crout">LU - Crout</option>
+                          <option value="cholesky">Cholesky (L L^T)</option>
+                        </optgroup>
+                        <optgroup label="Métodos Iterativos">
+                          <option value="jacobi">Jacobi</option>
+                          <option value="seidel">Gauss-Seidel</option>
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    {isIterative && (
+                      <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Tolerancia</label>
+                          <input 
+                            type="number" step="0.0001" 
+                            value={tolerance} 
+                            onChange={e => setTolerance(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-slate-500 mb-1">Max. Iteraciones</label>
+                          <input 
+                            type="number" 
+                            value={maxIter} 
+                            onChange={e => setMaxIter(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <button 
+                      onClick={calculate}
+                      className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm"
+                    >
+                      Calcular
+                    </button>
                   </div>
                 </div>
+              </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1">Método</label>
-                  <select 
-                    value={method} 
-                    onChange={(e) => { setMethod(e.target.value); setResult(null); setErrorMsg(''); }}
-                    className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <optgroup label="Factorización Directa">
-                      <option value="doolittle">LU - Doolittle</option>
-                      <option value="crout">LU - Crout</option>
-                      <option value="cholesky">Cholesky (L L^T)</option>
-                    </optgroup>
-                    <optgroup label="Métodos Iterativos">
-                      <option value="jacobi">Jacobi</option>
-                      <option value="seidel">Gauss-Seidel</option>
-                    </optgroup>
-                  </select>
-                </div>
-
-                {isIterative && (
-                  <div className="grid grid-cols-2 gap-3 pt-3 border-t border-slate-100">
+              <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
+                 <div className="flex flex-col md:flex-row gap-8 items-start justify-center min-w-max">
                     <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Tolerancia</label>
-                      <input 
-                        type="number" step="0.0001" 
-                        value={tolerance} 
-                        onChange={e => setTolerance(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                      <h3 className="text-center font-semibold text-slate-700 mb-3">Matriz A</h3>
+                      <div className="inline-grid gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200" 
+                           style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
+                        {matrix.map((row, r) => (
+                          row.map((val, c) => (
+                            <input
+                              key={`m-${r}-${c}`}
+                              type="number"
+                              step="any"
+                              value={val}
+                              onChange={(e) => updateMatrixValue(r, c, e.target.value)}
+                              className="w-16 h-12 text-center bg-white border border-slate-300 rounded-md shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono"
+                            />
+                          ))
+                        ))}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-slate-500 mb-1">Max. Iteraciones</label>
-                      <input 
-                        type="number" 
-                        value={maxIter} 
-                        onChange={e => setMaxIter(e.target.value)}
-                        className="w-full bg-slate-50 border border-slate-300 rounded-lg px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+
+                    <div className="flex items-center">
+                      <div className="text-2xl font-bold text-slate-300 mr-6">=</div>
+                      <div>
+                        <h3 className="text-center font-semibold text-slate-700 mb-3">Vector b</h3>
+                        <div className="flex flex-col gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
+                          {vectorB.map((val, i) => (
+                            <input
+                              key={`v-${i}`}
+                              type="number"
+                              step="any"
+                              value={val}
+                              onChange={(e) => updateVectorBValue(i, e.target.value)}
+                              className="w-16 h-12 text-center bg-white border border-slate-300 rounded-md shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono"
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                 </div>
+              </div>
+            </div>
+
+            {errorMsg && (
+              <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start">
+                <AlertIcon />
+                <div>
+                  <h3 className="text-red-800 font-medium">Error en el cálculo</h3>
+                  <p className="text-red-600 text-sm mt-1">{errorMsg}</p>
+                </div>
+              </div>
+            )}
+
+            {result && !errorMsg && (
+              <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+                <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center border-b pb-3">
+                  <CheckIcon /> Resultados
+                </h2>
+                
+                {result.type === 'factorization' && (
+                  <div>
+                    <div className="flex flex-col md:flex-row gap-8 justify-center items-center overflow-x-auto">
+                      <div className="text-center">
+                        <h4 className="font-semibold text-slate-600 mb-2">Matriz L (Lower)</h4>
+                        <div className="inline-block p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
+                          <div className="grid gap-x-4 gap-y-2" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
+                            {result.data.L.map((row, r) => row.map((val, c) => (
+                              <div key={`L-${r}-${c}`} className={`w-14 text-center font-mono text-sm ${val === 0 ? 'text-slate-300' : 'text-slate-800'}`}>
+                                {formatNum(val)}
+                              </div>
+                            )))}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="text-2xl font-bold text-slate-300 hidden md:block">×</div>
+
+                      <div className="text-center">
+                        <h4 className="font-semibold text-slate-600 mb-2">
+                          {result.data.isCholesky ? "Matriz L^T (Transpuesta)" : "Matriz U (Upper)"}
+                        </h4>
+                        <div className="inline-block p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
+                          <div className="grid gap-x-4 gap-y-2" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
+                            {result.data.U.map((row, r) => row.map((val, c) => (
+                              <div key={`U-${r}-${c}`} className={`w-14 text-center font-mono text-sm ${val === 0 ? 'text-slate-300' : 'text-slate-800'}`}>
+                                {formatNum(val)}
+                              </div>
+                            )))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center">
+                      <h4 className="font-semibold text-slate-600 mb-3">Vector Solución (x)</h4>
+                      <div className="flex flex-wrap gap-4 justify-center">
+                        {result.data.x.map((val, i) => (
+                          <div key={`res-x-${i}`} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center min-w-[80px]">
+                            <span className="text-xs text-slate-400 font-medium mb-1">x_{i+1}</span>
+                            <span className="font-mono text-lg font-semibold text-slate-800">{formatNum(val)}</span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 )}
 
-                <button 
-                  onClick={calculate}
-                  className="w-full mt-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition-colors shadow-sm"
-                >
-                  Calcular
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Input Panel */}
-          <div className="lg:col-span-2 bg-white p-6 rounded-2xl shadow-sm border border-slate-200 overflow-x-auto">
-             <div className="flex flex-col md:flex-row gap-8 items-start justify-center min-w-max">
-                {/* Matrix A Input */}
-                <div>
-                  <h3 className="text-center font-semibold text-slate-700 mb-3">Matriz A</h3>
-                  <div className="inline-grid gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200" 
-                       style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
-                    {matrix.map((row, r) => (
-                      row.map((val, c) => (
-                        <input
-                          key={`m-${r}-${c}`}
-                          type="number"
-                          step="any"
-                          value={val}
-                          onChange={(e) => updateMatrixValue(r, c, e.target.value)}
-                          className="w-16 h-12 text-center bg-white border border-slate-300 rounded-md shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono"
-                        />
-                      ))
-                    ))}
-                  </div>
-                </div>
-
-                {/* Vector B Input (Now always visible) */}
-                <div className="flex items-center">
-                  <div className="text-2xl font-bold text-slate-300 mr-6">=</div>
-                  <div>
-                    <h3 className="text-center font-semibold text-slate-700 mb-3">Vector b</h3>
-                    <div className="flex flex-col gap-2 p-4 bg-slate-50 rounded-xl border border-slate-200">
-                      {vectorB.map((val, i) => (
-                        <input
-                          key={`v-${i}`}
-                          type="number"
-                          step="any"
-                          value={val}
-                          onChange={(e) => updateVectorBValue(i, e.target.value)}
-                          className="w-16 h-12 text-center bg-white border border-slate-300 rounded-md shadow-sm outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all font-mono"
-                        />
+                {result.type === 'iterative' && (
+                  <div className="flex flex-col items-center">
+                    <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg font-medium mb-6">
+                      Convergencia alcanzada en {result.data.iter} iteraciones
+                    </div>
+                    
+                    <h4 className="font-semibold text-slate-600 mb-3">Vector Solución (x)</h4>
+                    <div className="flex flex-wrap gap-4 justify-center">
+                      {result.data.x.map((val, i) => (
+                        <div key={`res-x-${i}`} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center min-w-[80px]">
+                          <span className="text-xs text-slate-400 font-medium mb-1">x_{i+1}</span>
+                          <span className="font-mono text-lg font-semibold text-slate-800">{formatNum(val)}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
-                </div>
+                )}
 
-             </div>
+              </div>
+            )}
+
           </div>
         </div>
+      );
+    }
 
-        {/* Results Area */}
-        {errorMsg && (
-          <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-r-lg shadow-sm flex items-start">
-            <AlertCircle className="text-red-500 mr-3 mt-0.5 w-5 h-5 flex-shrink-0" />
-            <div>
-              <h3 className="text-red-800 font-medium">Error en el cálculo</h3>
-              <p className="text-red-600 text-sm mt-1">{errorMsg}</p>
-            </div>
-          </div>
-        )}
-
-        {result && !errorMsg && (
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 animate-in fade-in slide-in-from-bottom-4">
-            <h2 className="text-xl font-bold text-slate-800 mb-4 flex items-center border-b pb-3">
-              <CheckCircle2 className="text-green-500 mr-2" /> Resultados
-            </h2>
-            
-            {result.type === 'factorization' && (
-              <div>
-                <div className="flex flex-col md:flex-row gap-8 justify-center items-center overflow-x-auto">
-                  <div className="text-center">
-                    <h4 className="font-semibold text-slate-600 mb-2">Matriz L (Lower)</h4>
-                    <div className="inline-block p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
-                      <div className="grid gap-x-4 gap-y-2" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
-                        {result.data.L.map((row, r) => row.map((val, c) => (
-                          <div key={`L-${r}-${c}`} className={`w-14 text-center font-mono text-sm ${val === 0 ? 'text-slate-300' : 'text-slate-800'}`}>
-                            {formatNum(val)}
-                          </div>
-                        )))}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="text-2xl font-bold text-slate-300 hidden md:block">×</div>
-
-                  <div className="text-center">
-                    <h4 className="font-semibold text-slate-600 mb-2">
-                      {result.data.isCholesky ? "Matriz L^T (Transpuesta)" : "Matriz U (Upper)"}
-                    </h4>
-                    <div className="inline-block p-4 bg-slate-50 rounded-xl border border-slate-200 shadow-inner">
-                      <div className="grid gap-x-4 gap-y-2" style={{ gridTemplateColumns: `repeat(${size}, minmax(0, 1fr))` }}>
-                        {result.data.U.map((row, r) => row.map((val, c) => (
-                          <div key={`U-${r}-${c}`} className={`w-14 text-center font-mono text-sm ${val === 0 ? 'text-slate-300' : 'text-slate-800'}`}>
-                            {formatNum(val)}
-                          </div>
-                        )))}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="mt-8 pt-6 border-t border-slate-100 flex flex-col items-center">
-                  <h4 className="font-semibold text-slate-600 mb-3">Vector Solución (x)</h4>
-                  <div className="flex flex-wrap gap-4 justify-center">
-                    {result.data.x.map((val, i) => (
-                      <div key={`res-x-${i}`} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center min-w-[80px]">
-                        <span className="text-xs text-slate-400 font-medium mb-1">x_{i+1}</span>
-                        <span className="font-mono text-lg font-semibold text-slate-800">{formatNum(val)}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {result.type === 'iterative' && (
-              <div className="flex flex-col items-center">
-                <div className="bg-blue-50 text-blue-800 px-4 py-2 rounded-lg font-medium mb-6">
-                  Convergencia alcanzada en {result.data.iter} iteraciones
-                </div>
-                
-                <h4 className="font-semibold text-slate-600 mb-3">Vector Solución (x)</h4>
-                <div className="flex flex-wrap gap-4 justify-center">
-                  {result.data.x.map((val, i) => (
-                    <div key={`res-x-${i}`} className="bg-slate-50 border border-slate-200 rounded-lg p-3 flex flex-col items-center min-w-[80px]">
-                      <span className="text-xs text-slate-400 font-medium mb-1">x_{i+1}</span>
-                      <span className="font-mono text-lg font-semibold text-slate-800">{formatNum(val)}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-      </div>
-    </div>
-  );
-}
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
